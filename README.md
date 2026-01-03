@@ -18,11 +18,18 @@
 - [ ] Configure the [CODECOV_TOKEN](https://docs.codecov.com/docs/quick-start) secret for automated test coverage reports on PRs
 
 <!-- Plugin description -->
-This Fancy IntelliJ Platform Plugin is going to be your implementation of the brilliant ideas that you have.
+Organize your editor tabs into colored groups for better productivity.
 
-This specific section is a source for the [plugin.xml](/src/main/resources/META-INF/plugin.xml) file which will be extracted by the [Gradle](/build.gradle.kts) during the build process.
+**Features:**
+- Create named tab groups with custom colors
+- Visual tab coloring in editor
+- Git branch-aware groups
+- Pin groups across branches
+- Sort and reorder files within groups
 
-To keep everything working, do not remove `<!-- ... -->` sections. 
+**Usage:**
+- Right-click any editor tab → **Add to Group**
+- View → Tool Windows → **Tab Groups**
 <!-- Plugin description end -->
 
 ## Installation

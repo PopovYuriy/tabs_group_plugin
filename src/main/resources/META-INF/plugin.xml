@@ -1,15 +1,44 @@
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
 <idea-plugin>
     <id>com.github.popovyuriy.tabsgroupplugin</id>
-    <name>tabs_group_plugin</name>
-    <vendor>popovyuriy</vendor>
+    <name>Tab Groups</name>
+    <version>1.0.0</version>
+    <vendor email="popov.yuriy.92@gmail.com" url="https://github.com/PopovYuriy">Popov Yurii</vendor>
+
+    <idea-version since-build="241" until-build="252.*"/>
 
     <depends>com.intellij.modules.platform</depends>
 
     <resource-bundle>messages.MyBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow factoryClass="com.github.popovyuriy.tabsgroupplugin.toolWindow.MyToolWindowFactory" id="MyToolWindow"/>
+        <toolWindow
+                factoryClass="com.github.popovyuriy.tabsgroupplugin.toolWindow.MyToolWindowFactory"
+                id="Tab Groups"
+                anchor="right"
+                secondary="false"
+                canCloseContents="false"
+                icon="AllIcons.Actions.ListFiles"
+                doNotActivateOnStart="true"/>
+
         <postStartupActivity implementation="com.github.popovyuriy.tabsgroupplugin.startup.MyProjectActivity" />
+        <editorTabColorProvider implementation="com.github.popovyuriy.tabsgroupplugin.ui.GroupTabColorProvider"/>
     </extensions>
+
+    <actions>
+        <!-- Add to Group action in tab right-click menu -->
+        <action
+                id="TabGroups.AddToGroup"
+                class="com.github.popovyuriy.tabsgroupplugin.actions.AddToGroupAction"
+                text="Add to Group..."
+                description="Add this file to a tab group">
+
+            <!-- Add to Editor Tab popup menu (right-click on tab) -->
+            <add-to-group group-id="EditorTabPopupMenu" anchor="last"/>
+
+            <!-- Also add to Project View popup (right-click on file in project tree) -->
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
+    </actions>
+
 </idea-plugin>
