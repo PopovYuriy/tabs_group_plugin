@@ -8,16 +8,16 @@ import com.intellij.openapi.vfs.VirtualFile
 import java.awt.Color
 
 /**
- * Colors editor tabs based on their group color.
+ * Colors editor tabs by group.
+ *
+ * Called on the EDT for every tab on every repaint, so it does a single hash lookup and nothing
+ * more.
  */
 class GroupTabColorProvider : EditorTabColorProvider {
 
     override fun getEditorTabColor(project: Project, file: VirtualFile): Color? {
-        val groupService = TabGroupService.getInstance(project)
-        val colorService = TabColorService.getInstance(project)
-
-        val group = groupService.findGroupForFile(file) ?: return null
-
-        return colorService.getTabColor(group.color)
+        if (project.isDisposed) return null
+        val preset = TabGroupService.getInstance(project).presetForPath(file.path) ?: return null
+        return TabColorService.getInstance(project).tabBackground(preset)
     }
 }

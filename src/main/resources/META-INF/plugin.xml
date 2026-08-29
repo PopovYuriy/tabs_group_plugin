@@ -2,22 +2,25 @@
 <idea-plugin>
     <id>com.github.popovyuriy.tabsgroupplugin</id>
     <name>Tab Groups</name>
-    <version>1.0.0</version>
     <vendor email="popov.yuriy.92@gmail.com" url="https://github.com/PopovYuriy">Popov Yurii</vendor>
 
-    <idea-version since-build="241" until-build="252.*"/>
+    <!--
+      Platform-only dependency: no language, VCS or IDE-specific module is required, so the plugin
+      installs in every JetBrains IDE. Branch detection reads .git/HEAD directly rather than
+      depending on the Git4Idea plugin, which the user could have disabled.
 
+      <version> and <idea-version> are intentionally absent: the IntelliJ Platform Gradle Plugin
+      injects them from gradle.properties, and hardcoding them here silently overrode the build.
+    -->
     <depends>com.intellij.modules.platform</depends>
 
     <extensions defaultExtensionNs="com.intellij">
-        <!-- Services -->
-        <projectService serviceImplementation="com.github.popovyuriy.tabsgroupplugin.services.GitBranchService"/>
-        <projectService serviceImplementation="com.github.popovyuriy.tabsgroupplugin.services.GroupStorageService"/>
-        <projectService serviceImplementation="com.github.popovyuriy.tabsgroupplugin.services.TabColorService"/>
-        <projectService serviceImplementation="com.github.popovyuriy.tabsgroupplugin.services.TabGroupService"/>
-
+        <!--
+          Services are declared via @Service(Service.Level.PROJECT) on the classes themselves.
+          The previous <projectService> entries registered each one a second time.
+        -->
         <toolWindow
-                factoryClass="com.github.popovyuriy.tabsgroupplugin.toolWindow.MyToolWindowFactory"
+                factoryClass="com.github.popovyuriy.tabsgroupplugin.toolWindow.TabGroupsToolWindowFactory"
                 id="Tab Groups"
                 anchor="right"
                 secondary="false"
@@ -25,22 +28,20 @@
                 icon="AllIcons.Actions.ListFiles"
                 doNotActivateOnStart="true"/>
 
-        <postStartupActivity implementation="com.github.popovyuriy.tabsgroupplugin.startup.MyProjectActivity" />
-        <editorTabColorProvider implementation="com.github.popovyuriy.tabsgroupplugin.ui.GroupTabColorProvider"/>
+        <postStartupActivity
+                implementation="com.github.popovyuriy.tabsgroupplugin.startup.TabGroupsStartupActivity"/>
+
+        <editorTabColorProvider
+                implementation="com.github.popovyuriy.tabsgroupplugin.ui.GroupTabColorProvider"/>
     </extensions>
 
     <actions>
-        <!-- Add to Group action in tab right-click menu -->
         <action
                 id="TabGroups.AddToGroup"
                 class="com.github.popovyuriy.tabsgroupplugin.actions.AddToGroupAction"
                 text="Add to Group..."
                 description="Add this file to a tab group">
-
-            <!-- Add to Editor Tab popup menu (right-click on tab) -->
             <add-to-group group-id="EditorTabPopupMenu" anchor="last"/>
-
-            <!-- Also add to Project View popup (right-click on file in project tree) -->
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
         </action>
     </actions>

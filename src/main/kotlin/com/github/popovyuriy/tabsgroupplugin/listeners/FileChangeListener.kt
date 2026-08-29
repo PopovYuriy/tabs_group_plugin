@@ -2,114 +2,93 @@ package com.github.popovyuriy.tabsgroupplugin.listeners
 
 import com.github.popovyuriy.tabsgroupplugin.services.TabGroupService
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.newvfs.BulkFileListener
-import com.intellij.openapi.vfs.newvfs.events.*
+import com.intellij.openapi.vfs.newvfs.events.VFileCreateEvent
+import com.intellij.openapi.vfs.newvfs.events.VFileDeleteEvent
+import com.intellij.openapi.vfs.newvfs.events.VFileEvent
+import com.intellij.openapi.vfs.newvfs.events.VFileMoveEvent
+import com.intellij.openapi.vfs.newvfs.events.VFilePropertyChangeEvent
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * LESSON: Real-World Event Handling
+ * Keeps stored paths in sync with the file system.
  *
- * In theory: Moving a file triggers VFileMoveEvent
- * In practice: IDE often does CREATE + DELETE instead
+ * In theory a move produces a [VFileMoveEvent]. In practice the IDE frequently emits a
+ * create + delete pair instead, so recent creates are remembered briefly and matched against
+ * subsequent deletes by name.
  *
- * Solution: Track recently created files, and when we see
- * a DELETE with the same filename, treat it as a MOVE.
+ * Two things the previous implementation got wrong:
+ *  - it spawned a `Thread` per created file just to expire the entry five seconds later, which a
+ *    branch checkout or a build turns into thousands of sleeping threads. Entries are now expired
+ *    lazily, with no threads at all;
+ *  - `VFS_CHANGES` is an application-wide topic, so it fires for every open project and every
+ *    internal IDE file. Only names that actually appear in a tracked path are recorded now.
  */
 class FileChangeListener(private val project: Project) : BulkFileListener {
 
-    // Track recently created files: filename -> full path
-    // We use filename as key because moved files keep the same name
-    private val recentlyCreated = ConcurrentHashMap<String, String>()
+    private val recentCreates = ConcurrentHashMap<String, CreatedEntry>()
 
     override fun after(events: MutableList<out VFileEvent>) {
-        val service = try {
-            TabGroupService.getInstance(project)
-        } catch (e: Exception) {
-            return
-        }
+        if (project.isDisposed) return
+        val service = TabGroupService.getInstance(project)
 
-        // Process events in order
+        expireStaleCreates()
+
         for (event in events) {
             when (event) {
-                // True rename (same directory, different name)
-                is VFilePropertyChangeEvent -> {
-                    if (event.propertyName == "name") {
-                        handleRename(event, service)
-                    }
-                }
+                is VFilePropertyChangeEvent ->
+                    if (event.propertyName == VirtualFile.PROP_NAME) handleRename(event, service)
 
-                // True move (rare, but handle it)
                 is VFileMoveEvent -> {
-                    handleMove(event, service)
+                    val file = event.file
+                    val oldPath = "${event.oldParent.path}/${file.name}"
+                    service.handlePathMoved(oldPath, file.path, file.isDirectory)
                 }
 
-                // File created - might be part of a move operation
-                is VFileCreateEvent -> {
-                    val file = event.file ?: continue
-                    val fileName = file.name
-                    val newPath = file.path
+                is VFileCreateEvent -> rememberCreate(event, service)
 
-                    // Remember this file was just created
-                    recentlyCreated[fileName] = newPath
-                    println("TabGroups: Tracking created file: $fileName -> $newPath")
-
-                    // Clean up old entries after a delay (avoid memory leak)
-                    scheduleCleanup(fileName)
-                }
-
-                // File deleted - check if it's part of a move
-                is VFileDeleteEvent -> {
-                    val deletedPath = event.file.path
-                    val fileName = event.file.name
-
-                    // Check if we recently saw a CREATE with the same filename
-                    val newPath = recentlyCreated.remove(fileName)
-
-                    if (newPath != null && newPath != deletedPath) {
-                        // This is a MOVE: old location deleted, new location created
-                        println("TabGroups: >>> DETECTED MOVE: $deletedPath -> $newPath")
-                        service.handleFileMoved(deletedPath, newPath)
-                    } else {
-                        // This is a real delete
-                        println("TabGroups: >>> DELETE: $deletedPath")
-                        service.handleFileDeleted(deletedPath)
-                    }
-                }
+                is VFileDeleteEvent -> handleDelete(event, service)
             }
         }
     }
 
     private fun handleRename(event: VFilePropertyChangeEvent, service: TabGroupService) {
         val file = event.file
-        val oldName = event.oldValue as String
-        val parent = file.parent?.path ?: return
-        val oldPath = "$parent/$oldName"
-        val newPath = file.path
-
-        println("TabGroups: >>> RENAME: $oldPath -> $newPath")
-        service.handleFileMoved(oldPath, newPath)
+        val oldName = event.oldValue as? String ?: return
+        val parentPath = file.parent?.path ?: return
+        service.handlePathMoved("$parentPath/$oldName", file.path, file.isDirectory)
     }
 
-    private fun handleMove(event: VFileMoveEvent, service: TabGroupService) {
+    private fun rememberCreate(event: VFileCreateEvent, service: TabGroupService) {
+        val name = event.childName
+        if (!service.isTrackedName(name)) return
+        if (recentCreates.size >= MAX_TRACKED_CREATES) return
+        recentCreates[name] = CreatedEntry(event.path, event.isDirectory, System.currentTimeMillis())
+    }
+
+    private fun handleDelete(event: VFileDeleteEvent, service: TabGroupService) {
         val file = event.file
-        val oldParent = event.oldParent.path
-        val oldPath = "$oldParent/${file.name}"
-        val newPath = file.path
+        val deletedPath = file.path
+        val created = recentCreates.remove(file.name)
 
-        println("TabGroups: >>> MOVE: $oldPath -> $newPath")
-        service.handleFileMoved(oldPath, newPath)
+        if (created != null && created.path != deletedPath && created.isDirectory == file.isDirectory) {
+            service.handlePathMoved(deletedPath, created.path, file.isDirectory)
+        } else {
+            service.handlePathRemoved(deletedPath, file.isDirectory)
+        }
     }
 
-    private fun scheduleCleanup(fileName: String) {
-        // Remove from tracking after 5 seconds
-        // This handles the case where a file is created but not as part of a move
-        Thread {
-            try {
-                Thread.sleep(5000)
-                recentlyCreated.remove(fileName)
-            } catch (e: InterruptedException) {
-                // Ignore
-            }
-        }.start()
+    private fun expireStaleCreates() {
+        if (recentCreates.isEmpty()) return
+        val cutoff = System.currentTimeMillis() - CREATE_TTL_MILLIS
+        recentCreates.entries.removeIf { it.value.timestamp < cutoff }
+    }
+
+    private data class CreatedEntry(val path: String, val isDirectory: Boolean, val timestamp: Long)
+
+    private companion object {
+        const val CREATE_TTL_MILLIS = 5_000L
+        const val MAX_TRACKED_CREATES = 256
     }
 }

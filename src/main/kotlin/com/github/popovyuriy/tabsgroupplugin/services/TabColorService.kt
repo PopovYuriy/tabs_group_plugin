@@ -1,83 +1,76 @@
 package com.github.popovyuriy.tabsgroupplugin.services
 
+import com.github.popovyuriy.tabsgroupplugin.model.ColorPreset
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx
 import com.intellij.openapi.project.Project
+import com.intellij.util.ui.UIUtil
 import java.awt.Color
 
 /**
- * Service for managing tab colors.
+ * Derives the tinted colors used for editor tabs and tool window rows.
+ *
+ * Colors are *blended* against the surface they will be painted on rather than returned with an
+ * alpha channel. Translucent tab colors composite differently across IDE versions and themes;
+ * blending ourselves gives the same result everywhere.
  */
 @Service(Service.Level.PROJECT)
 class TabColorService(private val project: Project) {
 
-    // ============== Tab Color Constants ==============
+    /** Tint for an editor tab. */
+    fun tabBackground(preset: ColorPreset): Color = blend(preset.color, editorBackground(), TAB_TINT)
 
-    companion object {
-        /** Alpha for tab background in IDE tabs panel (very subtle) */
-        const val TAB_BACKGROUND_ALPHA = 25  // Was 40, now more subtle
+    /** Tint for a group container in the tool window. */
+    fun groupPanelBackground(preset: ColorPreset): Color = blend(preset.color, panelBackground(), PANEL_TINT)
 
-        /** Alpha for group panel background in Tool Window */
-        const val GROUP_PANEL_ALPHA = 0.15f
+    /** Tint for a hovered file row in the tool window. */
+    fun hoverBackground(preset: ColorPreset): Color = blend(preset.color, panelBackground(), HOVER_TINT)
 
-        /** Alpha for hover effect in Tool Window */
-        const val HOVER_ALPHA = 0.3f
-
-        fun getInstance(project: Project): TabColorService = project.service()
-    }
-
-    // ============== Color Utilities ==============
-
-    /**
-     * Get subtle tab color for IDE editor tabs.
-     */
-    fun getTabColor(baseColor: Color): Color {
-        return Color(
-            baseColor.red,
-            baseColor.green,
-            baseColor.blue,
-            TAB_BACKGROUND_ALPHA
-        )
-    }
-
-    /**
-     * Get subtle color for Tool Window group panels.
-     */
-    fun getGroupPanelColor(baseColor: Color): Color {
-        return Color(
-            baseColor.red,
-            baseColor.green,
-            baseColor.blue,
-            (255 * GROUP_PANEL_ALPHA).toInt()
-        )
-    }
-
-    /**
-     * Get hover color for Tool Window items.
-     */
-    fun getHoverColor(baseColor: Color): Color {
-        return Color(
-            baseColor.red,
-            baseColor.green,
-            baseColor.blue,
-            (255 * HOVER_ALPHA).toInt()
-        )
-    }
-
-    // ============== Tab Refresh ==============
-
-    /**
-     * Refresh all editor tabs to update colors.
-     */
+    /** Repaints open tabs so color changes show up immediately. Safe to call from any thread. */
     fun refreshAllTabs() {
+        val application = ApplicationManager.getApplication()
+        if (application.isDispatchThread) {
+            doRefresh()
+        } else {
+            application.invokeLater({ doRefresh() }, ModalityState.any())
+        }
+    }
+
+    private fun doRefresh() {
+        if (project.isDisposed) return
         try {
             val manager = FileEditorManagerEx.getInstanceEx(project)
             for (file in manager.openFiles) {
                 manager.updateFilePresentation(file)
             }
         } catch (e: Exception) {
-            println("TabGroups: Tab refresh error: ${e.message}")
+            thisLogger().warn("Could not refresh tab presentation", e)
         }
+    }
+
+    private fun editorBackground(): Color =
+        EditorColorsManager.getInstance().globalScheme.defaultBackground
+
+    private fun panelBackground(): Color = UIUtil.getPanelBackground()
+
+    private fun blend(accent: Color, background: Color, weight: Float): Color {
+        // Read the components through the Color API so JBColor resolves the active theme first.
+        val r = accent.red * weight + background.red * (1 - weight)
+        val g = accent.green * weight + background.green * (1 - weight)
+        val b = accent.blue * weight + background.blue * (1 - weight)
+        return Color(r.toInt().coerceIn(0, 255), g.toInt().coerceIn(0, 255), b.toInt().coerceIn(0, 255))
+    }
+
+    companion object {
+        private const val TAB_TINT = 0.18f
+        private const val PANEL_TINT = 0.16f
+        private const val HOVER_TINT = 0.30f
+
+        fun getInstance(project: Project): TabColorService = project.service()
     }
 }
