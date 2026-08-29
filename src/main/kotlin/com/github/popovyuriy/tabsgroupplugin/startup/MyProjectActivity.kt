@@ -1,12 +1,11 @@
 package com.github.popovyuriy.tabsgroupplugin.startup
 
-import com.github.popovyuriy.tabsgroupplugin.listeners.BranchChangePoller
 import com.github.popovyuriy.tabsgroupplugin.listeners.FileChangeListener
-import com.github.popovyuriy.tabsgroupplugin.services.tabGroup.TabGroupService
-import com.github.popovyuriy.tabsgroupplugin.util.TabUtils
+import com.github.popovyuriy.tabsgroupplugin.services.GitBranchService
+import com.github.popovyuriy.tabsgroupplugin.services.TabColorService
+import com.github.popovyuriy.tabsgroupplugin.services.TabGroupService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.startup.ProjectActivity
-import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFileManager
 import kotlinx.coroutines.delay
 
@@ -15,10 +14,12 @@ class MyProjectActivity : ProjectActivity {
     override suspend fun execute(project: Project) {
         println("TabGroups: Plugin initialized for project: ${project.name}")
 
-        // Initialize the service (loads persisted state)
-        val service = TabGroupService.getInstance(project)
+        // Initialize services (this also starts branch polling)
+        GitBranchService.getInstance(project)
+        TabGroupService.getInstance(project)
+        val colorService = TabColorService.getInstance(project)
 
-        // Register file system listener (for move/rename/delete)
+        // Register file system listener
         project.messageBus
             .connect()
             .subscribe(
@@ -27,14 +28,9 @@ class MyProjectActivity : ProjectActivity {
             )
         println("TabGroups: File change listener registered")
 
-        // Start branch change poller
-        val poller = BranchChangePoller(project, service)
-        poller.start()
-        Disposer.register(service, poller)
-
-        // Wait a bit for IDE to fully initialize tabs, then refresh colors
+        // Wait for IDE to initialize, then refresh tab colors
         delay(1000)
-        TabUtils.refreshAllTabs(project)
-        println("TabGroups: Tab colors refreshed")
+        colorService.refreshAllTabs()
+        println("TabGroups: Initial tab colors refreshed")
     }
 }

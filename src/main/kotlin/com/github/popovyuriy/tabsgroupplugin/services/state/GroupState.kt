@@ -1,6 +1,6 @@
-package com.github.popovyuriy.tabsgroupplugin.services.tabGroup.state
+package com.github.popovyuriy.tabsgroupplugin.services.state
 
-import com.github.popovyuriy.tabsgroupplugin.services.tabGroup.model.TabGroup
+import com.github.popovyuriy.tabsgroupplugin.services.model.TabGroup
 import java.awt.Color
 
 class GroupState {

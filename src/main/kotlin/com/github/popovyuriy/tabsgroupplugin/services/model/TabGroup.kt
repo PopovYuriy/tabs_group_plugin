@@ -1,6 +1,6 @@
-package com.github.popovyuriy.tabsgroupplugin.services.tabGroup.model
+package com.github.popovyuriy.tabsgroupplugin.services.model
 
-import com.github.popovyuriy.tabsgroupplugin.services.tabGroup.data.ColorPreset
+import com.github.popovyuriy.tabsgroupplugin.services.data.ColorPreset
 import java.awt.Color
 import java.util.UUID
 

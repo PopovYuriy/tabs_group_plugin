@@ -1,8 +1,9 @@
 package com.github.popovyuriy.tabsgroupplugin.toolWindow
 
-import com.github.popovyuriy.tabsgroupplugin.services.tabGroup.data.ColorPreset
-import com.github.popovyuriy.tabsgroupplugin.services.tabGroup.model.TabGroup
-import com.github.popovyuriy.tabsgroupplugin.services.tabGroup.TabGroupService
+import com.github.popovyuriy.tabsgroupplugin.services.TabColorService
+import com.github.popovyuriy.tabsgroupplugin.services.data.ColorPreset
+import com.github.popovyuriy.tabsgroupplugin.services.model.TabGroup
+import com.github.popovyuriy.tabsgroupplugin.services.TabGroupService
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.fileEditor.FileEditorManager
@@ -25,6 +26,7 @@ import javax.swing.*
 class TabGroupsToolWindowPanel(private val project: Project) : JPanel(BorderLayout()), Disposable {
 
     private val service = TabGroupService.getInstance(project)
+    private val colorService = TabColorService.getInstance(project)
     private val contentPanel = JPanel()
 
     init {
@@ -113,7 +115,7 @@ class TabGroupsToolWindowPanel(private val project: Project) : JPanel(BorderLayo
 
     private fun createGroupPanel(group: TabGroup, index: Int, totalGroups: Int): JComponent {
         val isExpanded = service.isGroupExpanded(group.id)
-        val subtleColor = getSubtleColor(group.color)
+        val subtleColor = colorService.getGroupPanelColor(group.color)
 
         val groupPanel = RoundedPanel(10, subtleColor).apply {
             layout = BoxLayout(this, BoxLayout.Y_AXIS)
@@ -214,7 +216,7 @@ class TabGroupsToolWindowPanel(private val project: Project) : JPanel(BorderLayo
             FileTypeManager.getInstance().getFileTypeByFileName(fileName).icon
         } ?: AllIcons.FileTypes.Any_type
 
-        val hoverColor = getSubtleColor(group.color, 0.3f)
+        val hoverColor = colorService.getHoverColor(group.color)
 
         val panel = RoundedPanel(6, null).apply {
             layout = BoxLayout(this, BoxLayout.X_AXIS)
@@ -455,15 +457,6 @@ class TabGroupsToolWindowPanel(private val project: Project) : JPanel(BorderLayo
         if (file != null) {
             FileEditorManager.getInstance(project).openFile(file, true)
         }
-    }
-
-    private fun getSubtleColor(color: Color, alpha: Float = 0.15f): Color {
-        return Color(
-            color.red,
-            color.green,
-            color.blue,
-            (255 * alpha).toInt()
-        )
     }
 
     override fun dispose() {

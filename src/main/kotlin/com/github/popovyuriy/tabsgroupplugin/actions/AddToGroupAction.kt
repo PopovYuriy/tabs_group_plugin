@@ -1,6 +1,6 @@
 package com.github.popovyuriy.tabsgroupplugin.actions
 
-import com.github.popovyuriy.tabsgroupplugin.services.tabGroup.TabGroupService
+import com.github.popovyuriy.tabsgroupplugin.services.TabGroupService
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent

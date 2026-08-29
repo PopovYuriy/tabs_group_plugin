@@ -1,6 +1,6 @@
 package com.github.popovyuriy.tabsgroupplugin.listeners
 
-import com.github.popovyuriy.tabsgroupplugin.services.tabGroup.TabGroupService
+import com.github.popovyuriy.tabsgroupplugin.services.TabGroupService
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.newvfs.BulkFileListener
 import com.intellij.openapi.vfs.newvfs.events.*

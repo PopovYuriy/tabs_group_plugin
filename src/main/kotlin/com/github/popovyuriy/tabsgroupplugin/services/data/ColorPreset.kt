@@ -1,4 +1,4 @@
-package com.github.popovyuriy.tabsgroupplugin.services.tabGroup.data
+package com.github.popovyuriy.tabsgroupplugin.services.data
 
 import java.awt.Color
 

@@ -1,6 +1,6 @@
 package com.github.popovyuriy.tabsgroupplugin.listeners
 
-import com.github.popovyuriy.tabsgroupplugin.services.tabGroup.TabGroupService
+import com.github.popovyuriy.tabsgroupplugin.services.TabGroupService
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorManagerListener
