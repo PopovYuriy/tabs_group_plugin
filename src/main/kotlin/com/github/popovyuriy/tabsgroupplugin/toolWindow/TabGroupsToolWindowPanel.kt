@@ -19,6 +19,7 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.util.ui.JBUI
 import java.awt.BorderLayout
+import java.awt.Color
 import java.awt.Component
 import java.awt.Cursor
 import java.awt.Dimension
@@ -57,6 +58,16 @@ class TabGroupsToolWindowPanel(private val project: Project) : JPanel(BorderLayo
     // Held as a field: removeChangeListener compares by identity.
     private val changeListener = Runnable { scheduleRebuild() }
     private var rebuildScheduled = false
+
+    /**
+     * The row currently painted as hovered, tracked centrally.
+     *
+     * Per-row enter/exit pairs cannot be trusted: Swing drops mouseExited when a component is
+     * removed from the hierarchy while the pointer is over it, when a popup takes the grab, and
+     * when the pointer leaves the window fast enough. Clearing the previous row on every enter
+     * makes "at most one highlighted row" an invariant rather than something we hope holds.
+     */
+    private var hoveredRow: HoverState? = null
 
     init {
         background = JBColor.PanelBackground
@@ -142,6 +153,8 @@ class TabGroupsToolWindowPanel(private val project: Project) : JPanel(BorderLayo
     private fun rebuildContent() {
         val scrollPosition = scrollPane.verticalScrollBar.value
 
+        // The old rows are about to be discarded, so any hover they were holding is stale.
+        hoveredRow = null
         contentPanel.removeAll()
         updateBranchLabel()
 
@@ -282,6 +295,7 @@ class TabGroupsToolWindowPanel(private val project: Project) : JPanel(BorderLayo
         }
 
         val closeButton = createCloseButton { removeFromGroup(filePath) }.apply { isVisible = false }
+        val hoverState = HoverState(row, closeButton, hoverColor)
 
         val mouseListener = object : MouseAdapter() {
             override fun mouseClicked(e: MouseEvent) {
@@ -293,15 +307,17 @@ class TabGroupsToolWindowPanel(private val project: Project) : JPanel(BorderLayo
                 }
             }
 
-            override fun mouseEntered(e: MouseEvent) {
-                closeButton.isVisible = true
-                row.setPanelColor(hoverColor)
-            }
+            override fun mouseEntered(e: MouseEvent) = applyHover(hoverState)
 
             override fun mouseExited(e: MouseEvent) {
-                if (row.mousePosition != null) return
-                closeButton.isVisible = false
-                row.setPanelColor(null)
+                // The same listener is installed on the row and on each of its children, so
+                // crossing from the label onto the close button fires an exit that is not a
+                // departure. Test the event's own coordinates against the row: querying
+                // row.mousePosition was wrong, since Container.getMousePosition() reports null
+                // whenever the pointer is over a child.
+                val point = SwingUtilities.convertPoint(e.component, e.point, row)
+                if (row.contains(point)) return
+                if (hoveredRow === hoverState) applyHover(null)
             }
         }
 
@@ -321,6 +337,24 @@ class TabGroupsToolWindowPanel(private val project: Project) : JPanel(BorderLayo
 
         return row
     }
+
+    /** Moves the highlight to [target], clearing whichever row held it before. */
+    private fun applyHover(target: HoverState?) {
+        val previous = hoveredRow
+        if (previous === target) return
+
+        previous?.let {
+            it.row.setPanelColor(null)
+            it.closeButton.isVisible = false
+        }
+        hoveredRow = target
+        target?.let {
+            it.row.setPanelColor(it.color)
+            it.closeButton.isVisible = true
+        }
+    }
+
+    private class HoverState(val row: RoundedPanel, val closeButton: JButton, val color: Color)
 
     private fun createCloseButton(action: () -> Unit): JButton =
         JButton(CloseIcon(JBColor.foreground(), 12)).apply {
