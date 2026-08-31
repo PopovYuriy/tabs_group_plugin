@@ -13,8 +13,8 @@ import com.intellij.openapi.project.Project
 /**
  * Persists tab groups and adapts between the stored representation and [TabGroup].
  *
- * All the interesting logic lives in [GroupStore]; this class only owns the lock, the
- * project-relative path conversion, and format migration.
+ * All the interesting logic lives in [GroupStore]; this class only owns the lock and the
+ * project-relative path conversion.
  */
 @State(
     name = "TabGroupStorage",
@@ -36,25 +36,21 @@ class GroupStorageService(private val project: Project) : PersistentStateCompone
         synchronized(lock) {
             state = loadedState
             store = GroupStore(loadedState)
-            migrate(loadedState)
-            store.reconcile()
         }
-    }
-
-    override fun noStateLoaded() {
-        synchronized(lock) { state.version = CURRENT_VERSION }
     }
 
     // ============== Reads ==============
 
     fun getPinnedGroups(): List<TabGroup> =
-        synchronized(lock) { store.pinnedGroups().map { it.toTabGroup() } }
+        synchronized(lock) { store.pinnedGroups().map { it.toTabGroup(pinned = true) } }
 
     fun getBranchGroups(branch: String): List<TabGroup> =
-        synchronized(lock) { store.branchGroups(branch).map { it.toTabGroup() } }
+        synchronized(lock) { store.branchGroups(branch).map { it.toTabGroup(pinned = false) } }
 
-    fun getAllGroups(branch: String): List<TabGroup> =
-        synchronized(lock) { store.allGroups(branch).map { it.toTabGroup() } }
+    fun getAllGroups(branch: String): List<TabGroup> = synchronized(lock) {
+        store.pinnedGroups().map { it.toTabGroup(pinned = true) } +
+                store.branchGroups(branch).map { it.toTabGroup(pinned = false) }
+    }
 
     fun isGroupPinned(groupId: String): Boolean = synchronized(lock) { store.isPinned(groupId) }
 
@@ -110,11 +106,12 @@ class GroupStorageService(private val project: Project) : PersistentStateCompone
 
     private fun stored(absolutePath: String) = ProjectPaths.toStored(project, absolutePath)
 
-    private fun GroupState.toTabGroup() = TabGroup(
+    /** [pinned] comes from the list the group was read out of, never from the group itself. */
+    private fun GroupState.toTabGroup(pinned: Boolean) = TabGroup(
         id = id,
         name = name,
-        color = ColorPreset.byId(colorId) ?: ColorPreset.byLegacyRgb(colorRgb) ?: ColorPreset.DEFAULT,
-        isPinned = isPinned,
+        color = ColorPreset.byId(colorId) ?: ColorPreset.DEFAULT,
+        isPinned = pinned,
         filePaths = filePaths.map { ProjectPaths.toAbsolute(project, it) }
     )
 
@@ -122,36 +119,10 @@ class GroupStorageService(private val project: Project) : PersistentStateCompone
         group.id = id
         group.name = name
         group.colorId = color.name
-        group.isPinned = isPinned
         group.filePaths = filePaths.mapTo(mutableListOf()) { stored(it) }
     }
 
-    // ============== Migration ==============
-
-    private fun migrate(loaded: TabGroupsState) {
-        if (loaded.version >= CURRENT_VERSION) return
-
-        val everyGroup = loaded.pinnedGroups.asSequence() +
-                loaded.defaultGroups.asSequence() +
-                loaded.branchGroups.values.asSequence().flatMap { it.asSequence() }
-
-        for (group in everyGroup) {
-            // v1: raw RGB int -> preset name.
-            if (group.colorId.isBlank()) {
-                group.colorId = (ColorPreset.byLegacyRgb(group.colorRgb) ?: ColorPreset.DEFAULT).name
-                group.colorRgb = 0
-            }
-            // v1: absolute paths -> project-relative where possible.
-            for (i in group.filePaths.indices) {
-                group.filePaths[i] = stored(group.filePaths[i])
-            }
-        }
-        loaded.version = CURRENT_VERSION
-    }
-
     companion object {
-        const val CURRENT_VERSION: Int = 1
-
         fun getInstance(project: Project): GroupStorageService = project.service()
     }
 }

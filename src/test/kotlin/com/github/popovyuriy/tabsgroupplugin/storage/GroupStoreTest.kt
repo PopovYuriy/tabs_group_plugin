@@ -8,7 +8,7 @@ import org.junit.Test
 
 /**
  * [GroupStore] has no platform dependencies, so the ordering, pinning and path rules can be
- * covered by plain JUnit. These are exactly the paths that carried the bugs fixed in 1.1.0.
+ * covered by plain JUnit. These are the paths where the rules are subtle enough to regress.
  */
 class GroupStoreTest {
 
@@ -30,7 +30,7 @@ class GroupStoreTest {
 
     private fun ids(groups: List<GroupState>) = groups.map { it.id }
 
-    // ---------- reads must not mutate ----------
+    // ---------- buckets ----------
 
     @Test
     fun `reading an unknown branch does not create a bucket`() {
@@ -44,7 +44,19 @@ class GroupStoreTest {
         assertEquals(setOf("feature/x"), state.branchGroups.keys)
     }
 
-    // ---------- the no-branch sentinel ----------
+    @Test
+    fun `removing the last group drops the bucket`() {
+        store.addGroup("feature/x", group("a"))
+        store.removeGroup("feature/x", "a")
+        assertTrue(state.branchGroups.isEmpty())
+    }
+
+    @Test
+    fun `pinning the last group drops the bucket`() {
+        store.addGroup("feature/x", group("a"))
+        store.pin("feature/x", "a")
+        assertTrue(state.branchGroups.isEmpty())
+    }
 
     @Test
     fun `a branch literally named default is separate from the no-branch bucket`() {
@@ -113,8 +125,8 @@ class GroupStoreTest {
         store.unpin("feature", "a")
 
         assertTrue(store.pinnedGroups().isEmpty())
+        assertFalse(store.isPinned("a"))
         assertEquals(listOf("a"), ids(store.branchGroups("feature")))
-        assertFalse(store.find("feature", "a")!!.isPinned)
     }
 
     @Test
@@ -166,17 +178,14 @@ class GroupStoreTest {
         )
     }
 
-    // ---------- maintenance ----------
-
     @Test
-    fun `reconcile repairs the pinned flag and drops empty buckets`() {
-        val stale = group("a").also { it.isPinned = true }
-        store.addGroup("main", stale)
-        state.branchGroups["abandoned"] = mutableListOf()
+    fun `file operations reach pinned and branch groups alike`() {
+        store.addGroup("main", group("pinned", "src/Moved.kt"))
+        store.pin("main", "pinned")
+        store.addGroup("main", group("plain", "src/Moved.kt"))
 
-        store.reconcile()
-
-        assertFalse(store.find("main", "a")!!.isPinned)
-        assertFalse(state.branchGroups.containsKey("abandoned"))
+        assertTrue(store.replacePath("main", "src/Moved.kt", "lib/Moved.kt"))
+        assertEquals(listOf("lib/Moved.kt"), store.find("main", "pinned")!!.filePaths)
+        assertEquals(listOf("lib/Moved.kt"), store.find("main", "plain")!!.filePaths)
     }
 }
